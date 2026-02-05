@@ -1,4 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Check for required dependencies
+for cmd in revolver tput gum git; do
+	if ! command -v "$cmd" >/dev/null 2>&1; then
+		echo "❌ Error: Required command '$cmd' not found" >&2
+		exit 1
+	fi
+done
 
 function revolver_stop() {
 	revolver stop
@@ -34,8 +43,14 @@ if ! gum confirm "Commit and push these changes?"; then
 	exit 1
 fi
 
-# Save the last commit message in a temporary file based on repository
-last_commit_file="/tmp/last_commit_message_$(basename "$(git rev-parse --show-toplevel)")"
+# Create secure temporary file with automatic cleanup
+if ! last_commit_file=$(mktemp); then
+	echo "❌ Failed to create temporary file" >&2
+	exit 1
+fi
+
+# Ensure cleanup on exit
+trap 'rm -f "$last_commit_file"' EXIT
 
 # Use the commit message provided in argument, if given
 if [ $# -eq 1 ]; then

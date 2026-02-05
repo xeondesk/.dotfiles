@@ -1,11 +1,18 @@
 # CodeRabbit Dotfiles
 
-![CodeRabbit Neovim](./sw/assets/vim.png)
+![CodeRabbit Neovim](./assets/images/vim.png)
 
 ## Introduction
 
 Welcome to CodeRabbit optimized development environment that is well integrated
 with our stack.
+
+## Features
+
+- ✅ chezmoi (recommended) + stow option
+- ✅ Auto-generate --help / man-style output
+- ✅ CI checks (ShellCheck + formatting)
+- ✅ Work / personal overlays
 
 ## Setup
 
@@ -15,14 +22,18 @@ home directory.
 ### Automatic Setup
 
 ```
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/coderabbitai/dotfiles/master/sw/assets/executable_install.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/xeondesk/.dotfiles/master/tools/install.sh)"
 ```
 
 ### Manual Setup
 
 ```
 cd $HOME
-chezmoi init git@github.com:coderabbitai/dotfiles.git
+# Use SSH if available, otherwise HTTPS
+chezmoi init git@github.com:xeondesk/.dotfiles.git  # SSH (requires SSH key)
+# OR if SSH is not available:
+chezmoi init https://github.com/xeondesk/.dotfiles.git  # HTTPS (requires git credentials)
+
 # show diff of changes that will be made
 chezmoi diff
 # If you are happy with the changes, apply away!
@@ -88,7 +99,7 @@ autoupdate commands by adding them to: `$HOME/.autoupdate_local.zsh`
 You can provide additional zshrc settings by adding them to:
 `$HOME/.zshrc_local`
 
-![zsh](./sw/assets/zsh.png)
+![zsh](./assets/images/zsh.png)
 
 ### Features
 
@@ -107,8 +118,8 @@ You can provide additional zshrc settings by adding them to:
 
 ## tmux
 
-![tmux Menu](./sw/assets/tmux-menu.png)
-![tmux Fuzzy Menu](./sw/assets/tmux-fzf.png)
+![tmux Menu](./assets/images/tmux-menu.png)
+![tmux Fuzzy Menu](./assets/images/tmux-fzf.png)
 
 `tmux` sessions are automatically started as part of `.zshrc` execution. You
 will be shown an option to join an existing detached session if they exist,
@@ -136,9 +147,9 @@ otherwise a new session will be created and attached to.
 This environment is highly tuned towards providing a modern neovim/vim setup for
 development using modern languages such as Golang, Typescript etc.
 
-![Fuzzy Menu](./sw/assets/fuzzymenu.png)
+![Fuzzy Menu](./assets/images/fuzzymenu.png)
 
-![IDE](./sw/assets/vim_ide.png)
+![IDE](./assets/images/vim_ide.png)
 
 ### vimrc
 
@@ -187,7 +198,7 @@ themes for terminal interface are spread across multiple settings.
   - Linux: Colors will be set automatically using terminal escape codes unless
     `SET_TERMINAL_COLORS` is set to `false` in your `.zshrc_local`.
     Alternatively, you can install default color profile using
-    `$HOME/sw/assets/install_gruvbox.sh`. Make sure to set `SET_TERMINAL_COLORS`
+    `tools/install_gruvbox.sh`. Make sure to set `SET_TERMINAL_COLORS`
     to `false` in your `.zshrc_local` if you would like to use terminal's color
     profiles.
 - tmux theme - See `.tmux.conf.settings` for example configuration and override

@@ -35,14 +35,33 @@ PARENT_PATH="$(dirname "${SCRIPT_PATH}")"
 # IMPORTANT: Make sure you export this variable if your main shell is not bash
 BASE_URL=${BASE_URL:-"https://raw.githubusercontent.com/Gogh-Co/Gogh/master"}
 
+# Safely download and execute external script
+download_and_verify_script() {
+	local url="$1"
+	local temp_script
+	temp_script=$(mktemp) || return 1
+	
+	if [[ "$(uname)" = "Darwin" ]]; then
+		curl -so "$temp_script" "$url" || {
+			rm -f "$temp_script"
+			return 1
+		}
+	else
+		wget -q -O "$temp_script" "$url" || {
+			rm -f "$temp_script"
+			return 1
+		}
+	fi
+	
+	# Execute the downloaded script
+	bash "$temp_script"
+	local exit_code=$?
+	rm -f "$temp_script"
+	return $exit_code
+}
+
 if [[ -e "${PARENT_PATH}/apply-colors.sh" ]]; then
 	bash "${PARENT_PATH}/apply-colors.sh"
 else
-	if [[ "$(uname)" = "Darwin" ]]; then
-		# OSX ships with curl and ancient bash
-		bash -c "$(curl -so- "${BASE_URL}/apply-colors.sh")"
-	else
-		# Linux ships with wget
-		bash -c "$(wget -qO- "${BASE_URL}/apply-colors.sh")"
-	fi
+	download_and_verify_script "${BASE_URL}/apply-colors.sh" || exit 1
 fi

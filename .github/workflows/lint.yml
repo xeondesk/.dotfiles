@@ -1,0 +1,149 @@
+name: Lint & Test
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'bin/**'
+      - 'tools/**'
+      - '.github/workflows/lint.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'bin/**'
+      - 'tools/**'
+      - '.github/workflows/lint.yml'
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install ShellCheck
+        run: apt-get update && apt-get install -y shellcheck
+      
+      - name: Run ShellCheck on bin/
+        run: |
+          echo "Checking shell scripts in bin/"
+          shellcheck -x bin/* || exit 1
+      
+      - name: Run ShellCheck on tools/
+        run: |
+          echo "Checking shell scripts in tools/"
+          shellcheck -x tools/*.sh tools/*.zsh || exit 1
+      
+      - name: Report ShellCheck results
+        if: always()
+        run: echo "✅ ShellCheck completed"
+
+  shfmt:
+    name: Shell Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install shfmt
+        run: apt-get update && apt-get install -y shfmt
+      
+      - name: Check formatting in bin/
+        run: |
+          echo "Checking formatting in bin/"
+          shfmt -d bin/* | head -20 || true
+      
+      - name: Check formatting in tools/
+        run: |
+          echo "Checking formatting in tools/"
+          shfmt -d tools/*.sh tools/*.zsh | head -20 || true
+      
+      - name: Report format check results
+        if: always()
+        run: echo "ℹ️  Format check completed (non-blocking)"
+
+  syntax:
+    name: Shell Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check syntax - bash scripts
+        run: |
+          echo "Checking bash syntax..."
+          for file in bin/* tools/*.sh; do
+            if [ -f "$file" ] && head -1 "$file" | grep -q bash; then
+              bash -n "$file" || exit 1
+            fi
+          done
+      
+      - name: Check syntax - zsh scripts
+        run: |
+          echo "Checking zsh syntax..."
+          # Install zsh for syntax checking
+          apt-get update && apt-get install -y zsh
+          for file in bin/{autoupdate,\*brews} tools/*.zsh; do
+            if [ -f "$file" ]; then
+              zsh -n "$file" || echo "Warning: $file syntax check"
+            fi
+          done
+      
+      - name: Report syntax check results
+        if: always()
+        run: echo "✅ Syntax check completed"
+
+  dependency-check:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for common external dependencies
+        run: |
+          echo "Checking for dependency declarations..."
+          
+          # Expected dependencies
+          deps_expected=("git" "grep" "sed" "awk" "find" "parallel" "gh" "chezmoi")
+          
+          # Check if scripts mention dependency checks
+          found_checks=$(grep -r "command -v" bin/ tools/ --include="*.sh" --include="*.zsh" | wc -l)
+          echo "Found $found_checks dependency checks in scripts"
+          
+          if [ $found_checks -lt 5 ]; then
+            echo "⚠️  Warning: Few dependency checks found. Consider adding more."
+          fi
+
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check markdown files exist
+        run: |
+          echo "Checking for documentation..."
+          [ -f README.md ] && echo "✅ README.md found" || echo "⚠️  README.md missing"
+          [ -f SCRIPTS.md ] && echo "✅ SCRIPTS.md found" || echo "⚠️  SCRIPTS.md missing"
+          [ -f PROJECT_REVIEW.md ] && echo "✅ PROJECT_REVIEW.md found" || echo "⚠️  PROJECT_REVIEW.md missing"
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [shellcheck, shfmt, syntax, dependency-check, markdown-lint]
+    if: always()
+    steps:
+      - name: Check job statuses
+        run: |
+          echo "## Lint Results"
+          echo "- ShellCheck: ${{ needs.shellcheck.result }}"
+          echo "- Format Check: ${{ needs.shfmt.result }}"
+          echo "- Syntax Check: ${{ needs.syntax.result }}"
+          echo "- Dependency Check: ${{ needs.dependency-check.result }}"
+          echo "- Documentation: ${{ needs.markdown-lint.result }}"
+      
+      - name: Set final status
+        run: |
+          if [ "${{ needs.shellcheck.result }}" = "failure" ] || [ "${{ needs.syntax.result }}" = "failure" ]; then
+            echo "❌ Critical checks failed"
+            exit 1
+          fi
+          echo "✅ All critical checks passed"

@@ -59,33 +59,111 @@ if [ -d "$HOME"/.git ]; then
 fi
 
 echo "Setting up .gitconfig_local"
-# ask the user to input email address
-email=$(gum input --placeholder "Please enter your CodeRabbit email address")
 
-# ask the user to input their name
-name=$(gum input --placeholder "Please enter your name")
+# Helper function to escape gitconfig values
+escape_gitconfig() {
+	# Escape backslashes and quotes for gitconfig format
+	printf '%s\n' "$1" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g'
+}
 
-# create .gitconfig_local
-# File contents:
-# [user]
-#   name = $name
-#   email = $email
-echo "[user]" >"$HOME"/.gitconfig_local
-echo "  name = $name" >>"$HOME"/.gitconfig_local
-echo "  email = $email" >>"$HOME"/.gitconfig_local
+# Helper function to validate email
+validate_email() {
+	local email="$1"
+	# Simple email validation pattern
+	if [[ "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+		return 0
+	else
+		return 1
+	fi
+}
 
-chezmoi init git@github.com:coderabbitai/dotfiles.git
+# Helper function to validate name
+validate_name() {
+	local name="$1"
+	# Allow letters, spaces, hyphens, apostrophes
+	if [[ "$name" =~ ^[a-zA-Z\ \'-]+$ ]] && [[ ${#name} -le 100 ]]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+# Collect and validate user input
+while true; do
+	email=$(gum input --placeholder "Please enter your CodeRabbit email address")
+	if validate_email "$email"; then
+		break
+	fi
+	echo "❌ Invalid email format. Please try again."
+done
+
+while true; do
+	name=$(gum input --placeholder "Please enter your name")
+	if validate_name "$name"; then
+		break
+	fi
+	echo "❌ Invalid name. Only letters, spaces, hyphens, and apostrophes allowed (max 100 chars)."
+done
+
+# Escape and write safely
+email_escaped=$(escape_gitconfig "$email")
+name_escaped=$(escape_gitconfig "$name")
+
+{
+	echo "[user]"
+	echo "  name = $name_escaped"
+	echo "  email = $email_escaped"
+} >"$HOME/.gitconfig_local"
+
+chmod 600 "$HOME/.gitconfig_local"  # Restrict permissions
+echo "✅ Git configuration saved"
+
+# Initialize chezmoi with SSH/HTTPS fallback
+echo "Initializing chezmoi..."
+if ssh -T git@github.com >/dev/null 2>&1; then
+	# SSH key available, use SSH URL
+	chezmoi init git@github.com:xeondesk/.dotfiles.git
+else
+	# Fall back to HTTPS (requires git credentials or gh CLI token)
+	echo "SSH authentication not available, using HTTPS..."
+	chezmoi init https://github.com/xeondesk/.dotfiles.git
+fi
+
 chezmoi apply -v
 
 # run autoupdate script
 echo "Running autoupdate script..."
-~/sw/bin/autoupdate.zsh --force
-# if autoupdate failed, exit
-if [ $? -ne 0 ]; then
-	echo "Failed to run autoupdate script"
-	exit 1
+# Look for the custom autoupdate script in dotfiles after chezmoi apply
+if [ -x "$HOME/.local/bin/autoupdate" ]; then
+	"$HOME/.local/bin/autoupdate" --force || {
+		echo "⚠️  autoupdate script failed, but dotfiles are applied"
+	}
+elif [ -x "$HOME/.dotfiles/bin/autoupdate" ]; then
+	"$HOME/.dotfiles/bin/autoupdate" --force || {
+		echo "⚠️  autoupdate script failed, but dotfiles are applied"
+	}
+else
+	echo "⚠️  autoupdate script not found, skipping (will run on next shell launch)"
 fi
 
-# reboot computer
-echo "Restarting computer..."
-sudo reboot
+# reboot computer (skip in containers)
+echo "Script completed successfully!"
+echo ""
+
+# Detect if running in a container
+if [ -f /.dockerenv ] || [ -f /run/secrets/kubernetes.io ]; then
+	echo "ℹ️  Container detected. Skipping reboot."
+	echo "Your dotfiles have been applied. Please restart your shell to load the new configuration:"
+	echo "  exec \$SHELL"
+else
+	echo "⚠️  The system needs to restart to apply all changes."
+	echo ""
+
+	if gum confirm "Restart now?"; then
+		echo "Restarting computer..."
+		sudo reboot
+	else
+		echo "Restart skipped. Please restart manually when ready:"
+		echo "  sudo reboot"
+	fi
+fi

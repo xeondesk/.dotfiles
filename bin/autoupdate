@@ -1,20 +1,54 @@
 #!/usr/bin/env zsh
 
-# check whether this script is being eval'ed
+##############################################################################
+# autoupdate - System and dotfiles update script
+##############################################################################
+#
+# Description: Updates system packages, dotfiles, shell plugins, editor configs
+# and various development tools. Can be run manually or on a schedule.
+#
+# Usage:
+#   autoupdate              # Updates if interval has passed
+#   autoupdate --force      # Force update regardless of interval
+#
+# Environment Variables:
+#   SYSTEM_UPDATE_DAYS      Days between automatic updates (default: 7)
+#   SYSTEM_RECEIPT_F        File to track last update time (default: .system_lastupdate)
+#
+# Features:
+#   - Automatic interval checking
+#   - Updates chezmoi dotfiles
+#   - Updates zsh plugin manager (zinit)
+#   - Updates Neovim plugins
+#   - Updates npm/npm/python packages
+#   - Updates documentation cache (tldr)
+#   - Can be sourced to use as function in shell
+#
+##############################################################################
+
+# Determine if script is being sourced or executed
+# sourced=0 means executed as script, sourced=1 means sourced into shell
 [[ $0 =~ "autoupdate.zsh" ]] && sourced=0 || sourced=1
 
-# Track errors from various update commands in an array and show the result before exiting
+##############################################################################
+# Error Handling
+##############################################################################
+
+# Track errors from various update commands in an array
+declare -a update_errors=()
+tp='success'
+
+# Function: Track command errors
+# Parameters: $1 = command name, $2 = exit code
 function update_error() {
-	error_cmd=$1
-	error_code=$2
+	local error_cmd=$1
+	local error_code=$2
 	if [ $error_code -ne 0 ]; then
-		# add the error to the array
 		update_errors+=("$error_cmd: $error_code")
 	fi
 }
 
-tp='success'
-
+# Function: Display error summary and exit
 function show_errors() {
 	if [ ${#update_errors[@]} -ne 0 ]; then
 		tp='error'
@@ -23,7 +57,7 @@ function show_errors() {
 			echo "  $error"
 		done
 	fi
-	# $sourced is 1, use term-notify to send notifications
+	# If sourced into shell, use term-notify; otherwise exit with status
 	if [ $sourced -eq 1 ]; then
 		term-notify $tp $interval <<<"autoupdate.zsh"
 	else
@@ -35,20 +69,31 @@ function show_errors() {
 	fi
 }
 
+##############################################################################
+# Utility Functions
+##############################################################################
+
+# Function: Check interval since last update
+# Parameters: $1 = receipt filename
+# Returns: Seconds since last update
 function check_interval() {
+	local receipt_file=$1
+	local now current_update
 	now=$(date +%s)
-	if [ -f ~/${1} ]; then
-		last_update=$(cat ~/${1})
+	
+	if [ -f ~/${receipt_file} ]; then
+		current_update=$(cat ~/${receipt_file})
 	else
-		last_update=0
+		current_update=0
 	fi
-	interval=$(expr ${now} - ${last_update})
-	echo ${interval}
+	
+	echo $((now - current_update))
 }
 
+# Function: Stop progress spinner and restore cursor
 function revolver_stop() {
-  revolver stop
-  tput cnorm
+	revolver stop
+	tput cnorm
 }
 
 if [ -z "$SYSTEM_UPDATE_DAYS" ]; then
@@ -59,41 +104,55 @@ if [ -z "$SYSTEM_RECEIPT_F" ]; then
 	SYSTEM_RECEIPT_F='.system_lastupdate'
 fi
 
-# check whether force update option was provided
+# Parse command-line options
 if [ "$1" = "--force" ]; then
 	force_update=1
 else
 	force_update=0
 fi
 
+# Calculate time thresholds
 day_seconds=86400
 system_seconds=$(expr ${day_seconds} \* ${SYSTEM_UPDATE_DAYS})
 
 last_system=$(check_interval ${SYSTEM_RECEIPT_F})
 
+# Execute updates if threshold passed or forced
 if [ ${last_system} -gt ${system_seconds} ] || [ $force_update -eq 1 ]; then
-	# get current time
 	start_time=$(date +%s)
 
+	# Record update time
 	$(date +%s >~/${SYSTEM_RECEIPT_F})
 	echo "It has been $(expr ${last_system} / $day_seconds) days since system was updated"
 	echo "Updating system... Please open a new terminal to continue your work in parallel..."
 
-  # check if revolver command exists
-  if command -v revolver >/dev/null 2>&1; then
-    tput civis
-    revolver --style 'dots2' start 'Pulling latest dotfiles...'
-  fi
+	# Initialize progress display
+	if command -v revolver >/dev/null 2>&1; then
+		tput civis
+		revolver --style 'dots2' start 'Pulling latest dotfiles...'
+	fi
 
+	##################################################################
+	# 1. DOTFILES UPDATE
+	##################################################################
 	cd ~ && chezmoi --force update -v
 	update_error dotfiles $?
 
-  revolver update "Running personal autoupdates..."
-	# run ~/.autoupdate_local.zsh if it exists
-	if [ -f ~/.autoupdate_local.zsh ]; then
-		# run ~/.autoupdate_local.zsh by eval it's content
-		eval "$(cat ~/.autoupdate_local.zsh)"
-		update_error ~/.autoupdate_local.zsh $?
+	##################################################################
+	# 2. PERSONAL AUTOUPDATE HOOKS
+	##################################################################
+	revolver update "Running personal autoupdates..."
+	# safe way to source local configuration
+	if [ -f "$HOME/.autoupdate_local.zsh" ]; then
+		# validate that the file is readable and not a symlink to untrusted location
+		if [ -r "$HOME/.autoupdate_local.zsh" ] && [ ! -L "$HOME/.autoupdate_local.zsh" ]; then
+			source "$HOME/.autoupdate_local.zsh" || {
+				update_error ~/.autoupdate_local.zsh $?
+			}
+		else
+			echo "⚠️  Cannot read or untrusted symlink: $HOME/.autoupdate_local.zsh" >&2
+			update_error ~/.autoupdate_local.zsh 1
+		fi
 	fi
 
   if command -v revolver >/dev/null 2>&1; then

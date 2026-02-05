@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
+# Check for required dependencies
+for cmd in tput revolver gh parallel; do
+	if ! command -v "$cmd" >/dev/null 2>&1; then
+		echo "❌ Error: Required command '$cmd' not found" >&2
+		exit 1
+	fi
+done
 
 # Accept 2 arguments
 if [ $# -ne 2 ]; then
@@ -14,9 +23,6 @@ repolist=$(gh repo list "$1" --limit 99999 --json nameWithOwner,sshUrl --jq '.[]
 revolver stop
 tput cnorm
 
-parallel --no-notice --bar --eta --colsep '\t' "[ ! -d '$2/{1}' ] && git clone --quiet '{2}' '$2/{1}'" :::: <(echo "$repolist")
-code=$?
+parallel --no-notice --bar --eta --colsep '\t' "[ ! -d '$2/{1}' ] && git clone --quiet '{2}' \"$2/{1}\"" :::: <(echo "$repolist")
 
 echo "Finished cloning"
-
-exit $code
